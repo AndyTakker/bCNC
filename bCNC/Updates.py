@@ -6,6 +6,7 @@
 import json
 import time
 import http.client as http
+import requests             # Added for PyPi
 from tkinter import (
     W,
     E,
@@ -33,6 +34,27 @@ import Utils
 
 __author__ = "Vasilis Vlachoudis"
 __email__ = "vvlachoudis@gmail.com"
+
+# ----------------------------------------------------------------------
+def get_pypi_release_params(package_name):
+    # Get version and publish date from PyPi.
+    response = requests.get(f"https://pypi.org/pypi/{package_name}/json")
+    if response.status_code == 200:
+        data = response.json()
+        releases = data["releases"]
+        release_dates = {}
+        for version, files in releases.items():
+            if files:  # Check if there are files for this version. 
+                release_dates[version] = files[0]["upload_time"]  # Date of first upload.
+        
+        # Sort by date.
+        sorted_releases = sorted(release_dates.items())
+        
+        # Select latest version. 
+        latest_version, latest_date = sorted_releases[-1]
+        return latest_version, latest_date[:10]  # Remove time.
+    else:
+        raise ValueError(f"Package '{package_name}' not found on PyPI.")
 
 
 # =============================================================================
@@ -63,20 +85,20 @@ class CheckUpdateDialog(Toplevel):
         la.grid(row=0, column=1, sticky=EW)
         tkExtra.Balloon.set(la, _("Running version of bCNC"))
 
-        la = Label(frame, text=_("Latest Github Version:"))
+        la = Label(frame, text=_("Latest Version:"))
         la.grid(row=1, column=0, sticky=E, pady=1)
 
         self.webversion = Label(frame, anchor=W)
         self.webversion.grid(row=1, column=1, sticky=EW)
         tkExtra.Balloon.set(self.webversion,
-                            _("Latest release version on github"))
+                            _("Latest release version on github/PyPi"))
         la = Label(frame, text=_("Published at:"))
         la.grid(row=2, column=0, sticky=E, pady=1)
 
         self.published = Label(frame, anchor=W)
         self.published.grid(row=2, column=1, sticky=EW)
         tkExtra.Balloon.set(
-            self.published, _("Published date of the latest github release")
+            self.published, _("Published date of the latest github/PyPi release")
         )
 
         frame.grid_columnconfigure(1, weight=1)
@@ -167,9 +189,13 @@ class CheckUpdateDialog(Toplevel):
         if r.status == http.OK:
             data = json.loads(r.read().decode("utf-8"))
             latest_version = data["tag_name"]
+            # Select version and date from PyPi, if packet is on it.
+            published_at = data["published_at"]
+            if(latest_version == "pypi"):
+                latest_version, published_at = get_pypi_release_params("bCNC")
 
             self.webversion.config(text=latest_version)
-            self.published.config(text=data["published_at"])
+            self.published.config(text=published_at)
 
             if self.isNewer(latest_version):
                 self.webversion.config(background="LightGreen")
@@ -189,6 +215,7 @@ class CheckUpdateDialog(Toplevel):
 
         # Save today as lastcheck date
         Utils.config.set(Utils.__prg__, "lastcheck", str(int(time.time())))
+
 
     # ----------------------------------------------------------------------
     def later(self):
